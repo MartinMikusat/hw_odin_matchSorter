@@ -1,6 +1,7 @@
 package match_sorter
 
 import "core:testing"
+import "core:math"
 
 expect_strings :: proc(t: ^testing.T, actual, expected: []string) {
 	testing.expect_value(t, len(actual), len(expected))
@@ -345,4 +346,115 @@ null_paths_array_ties_and_diacritic_collation_test :: proc(t: ^testing.T) {
 	)
 	defer delete(diacritics)
 	expect_strings(t, diacritics, []string{"à la carte", "à la mode", "anothernodiacritics", "café", "jalapeño", "nodiacritics", "papier-mâché"})
+}
+
+Typed_Test_Item :: struct {name: string, aliases: []string}
+
+typed_name_getter :: proc(item: ^Typed_Test_Item) -> Extracted_Values {
+	return single_value(item.name)
+}
+
+typed_aliases_getter :: proc(item: ^Typed_Test_Item) -> Extracted_Values {
+	return many_values(item.aliases)
+}
+
+@(test)
+typed_indices_borrow_input_and_reset_scratch_test :: proc(t: ^testing.T) {
+	search: Search_Context
+	err := search_context_init(&search)
+	testing.expect(t, err == nil)
+	defer search_context_destroy(&search)
+	items := []Typed_Test_Item{
+		{name="Ada", aliases=[]string{"Countess", "Enchantress of Numbers"}},
+		{name="Grace", aliases=[]string{"Amazing Grace", "COBOL"}},
+		{name="Edsger", aliases=[]string{"Dijkstra"}},
+	}
+	keys := []Typed_Key(Typed_Test_Item){
+		{getter=typed_name_getter},
+		{getter=typed_aliases_getter},
+	}
+	used_before := search.scratch.total_used
+	indices := match_indices_typed(&search, items, "cob", Typed_Options(Typed_Test_Item){keys=keys, has_threshold=true, threshold=STARTS_WITH})
+	defer delete(indices)
+	testing.expect_value(t, len(indices), 1)
+	testing.expect_value(t, indices[0], 1)
+	testing.expect_value(t, search.scratch.total_used, used_before)
+	testing.expect_value(t, items[1].name, "Grace")
+}
+
+@(test)
+context_uses_fixed_en_us_collation_test :: proc(t: ^testing.T) {
+	search: Search_Context
+	testing.expect(t, search_context_init(&search) == nil)
+	defer search_context_destroy(&search)
+	items := []Value{string_value("a'd"), string_value("a-c"), string_value("a_b"), string_value("a a")}
+	indices := match_indices(&search, items, "", Options{})
+	defer delete(indices)
+	testing.expect_value(t, len(indices), 4)
+	expected := []int{3, 2, 1, 0}
+	for value, index in indices { testing.expect_value(t, value, expected[index]) }
+}
+
+@(test)
+remove_accents_0_5_0_complete_mapping_test :: proc(t: ^testing.T) {
+	input := "À|Á|Â|Ã|Ä|Å|Ấ|Ắ|Ẳ|Ẵ|Ặ|Æ|Ầ|Ằ|Ȃ|Ả|Ạ|Ẩ|Ẫ|Ậ|Ç|Ḉ|È|É|Ê|Ë|Ế|Ḗ|Ề|Ḕ|Ḝ|Ȇ|Ẻ|Ẽ|Ẹ|Ể|Ễ|Ệ|Ì|Í|Î|Ï|Ḯ|Ȋ|Ỉ|Ị|Ð|Ñ|Ò|Ó|Ô|Õ|Ö|Ø|Ố|Ṍ|Ṓ|Ȏ|Ỏ|Ọ|Ổ|Ỗ|Ộ|Ờ|Ở|Ỡ|Ớ|Ợ|Ù|Ú|Û|Ü|Ủ|Ụ|Ử|Ữ|Ự|Ý|à|á|â|ã|ä|å|ấ|ắ|ẳ|ẵ|ặ|æ|ầ|ằ|ȃ|ả|ạ|ẩ|ẫ|ậ|ç|ḉ|è|é|ê|ë|ế|ḗ|ề|ḕ|ḝ|ȇ|ẻ|ẽ|ẹ|ể|ễ|ệ|ì|í|î|ï|ḯ|ȋ|ỉ|ị|ð|ñ|ò|ó|ô|õ|ö|ø|ố|ṍ|ṓ|ȏ|ỏ|ọ|ổ|ỗ|ộ|ờ|ở|ỡ|ớ|ợ|ù|ú|û|ü|ủ|ụ|ử|ữ|ự|ý|ÿ|Ā|ā|Ă|ă|Ą|ą|Ć|ć|Ĉ|ĉ|Ċ|ċ|Č|č|C̆|c̆|Ď|ď|Đ|đ|Ē|ē|Ĕ|ĕ|Ė|ė|Ę|ę|Ě|ě|Ĝ|Ǵ|ĝ|ǵ|Ğ|ğ|Ġ|ġ|Ģ|ģ|Ĥ|ĥ|Ħ|ħ|Ḫ|ḫ|Ĩ|ĩ|Ī|ī|Ĭ|ĭ|Į|į|İ|ı|Ĳ|ĳ|Ĵ|ĵ|Ķ|ķ|Ḱ|ḱ|K̆|k̆|Ĺ|ĺ|Ļ|ļ|Ľ|ľ|Ŀ|ŀ|Ł|ł|Ḿ|ḿ|M̆|m̆|Ń|ń|Ņ|ņ|Ň|ň|ŉ|N̆|n̆|Ō|ō|Ŏ|ŏ|Ő|ő|Œ|œ|P̆|p̆|Ŕ|ŕ|Ŗ|ŗ|Ř|ř|R̆|r̆|Ȓ|ȓ|Ś|ś|Ŝ|ŝ|Ş|Ș|ș|ş|Š|š|Ţ|ţ|ț|Ț|Ť|ť|Ŧ|ŧ|T̆|t̆|Ũ|ũ|Ū|ū|Ŭ|ŭ|Ů|ů|Ű|ű|Ų|ų|Ȗ|ȗ|V̆|v̆|Ŵ|ŵ|Ẃ|ẃ|X̆|x̆|Ŷ|ŷ|Ÿ|Y̆|y̆|Ź|ź|Ż|ż|Ž|ž|ſ|ƒ|Ơ|ơ|Ư|ư|Ǎ|ǎ|Ǐ|ǐ|Ǒ|ǒ|Ǔ|ǔ|Ǖ|ǖ|Ǘ|ǘ|Ǚ|ǚ|Ǜ|ǜ|Ứ|ứ|Ṹ|ṹ|Ǻ|ǻ|Ǽ|ǽ|Ǿ|ǿ|Þ|þ|Ṕ|ṕ|Ṥ|ṥ|X́|x́|Ѓ|ѓ|Ќ|ќ|A̋|a̋|E̋|e̋|I̋|i̋|Ǹ|ǹ|Ồ|ồ|Ṑ|ṑ|Ừ|ừ|Ẁ|ẁ|Ỳ|ỳ|Ȁ|ȁ|Ȅ|ȅ|Ȉ|ȉ|Ȍ|ȍ|Ȑ|ȑ|Ȕ|ȕ|B̌|b̌|Č̣|č̣|Ê̌|ê̌|F̌|f̌|Ǧ|ǧ|Ȟ|ȟ|J̌|ǰ|Ǩ|ǩ|M̌|m̌|P̌|p̌|Q̌|q̌|Ř̩|ř̩|Ṧ|ṧ|V̌|v̌|W̌|w̌|X̌|x̌|Y̌|y̌|A̧|a̧|B̧|b̧|Ḑ|ḑ|Ȩ|ȩ|Ɛ̧|ɛ̧|Ḩ|ḩ|I̧|i̧|Ɨ̧|ɨ̧|M̧|m̧|O̧|o̧|Q̧|q̧|U̧|u̧|X̧|x̧|Z̧|z̧|й|Й|ё|Ё"
+	expected := "A|A|A|A|A|A|A|A|A|A|A|AE|A|A|A|A|A|A|A|A|C|C|E|E|E|E|E|E|E|E|E|E|E|E|E|E|E|E|I|I|I|I|I|I|I|I|D|N|O|O|O|O|O|O|O|O|O|O|O|O|O|O|O|O|O|O|O|O|U|U|U|U|U|U|U|U|U|Y|a|a|a|a|a|a|a|a|a|a|a|ae|a|a|a|a|a|a|a|a|c|c|e|e|e|e|e|e|e|e|e|e|e|e|e|e|e|e|i|i|i|i|i|i|i|i|d|n|o|o|o|o|o|o|o|o|o|o|o|o|o|o|o|o|o|o|o|o|u|u|u|u|u|u|u|u|u|y|y|A|a|A|a|A|a|C|c|C|c|C|c|C|c|C|c|D|d|D|d|E|e|E|e|E|e|E|e|E|e|G|G|g|g|G|g|G|g|G|g|H|h|H|h|H|h|I|i|I|i|I|i|I|i|I|i|IJ|ij|J|j|K|k|K|k|K|k|L|l|L|l|L|l|L|l|l|l|M|m|M|m|N|n|N|n|N|n|n|N|n|O|o|O|o|O|o|OE|oe|P|p|R|r|R|r|R|r|R|r|R|r|S|s|S|s|S|S|s|s|S|s|T|t|t|T|T|t|T|t|T|t|U|u|U|u|U|u|U|u|U|u|U|u|U|u|V|v|W|w|W|w|X|x|Y|y|Y|Y|y|Z|z|Z|z|Z|z|s|f|O|o|U|u|A|a|I|i|O|o|U|u|U|u|U|u|U|u|U|u|U|u|U|u|A|a|AE|ae|O|o|TH|th|P|p|S|s|X|x|Г|г|К|к|A|a|E|e|I|i|N|n|O|o|O|o|U|u|W|w|Y|y|A|a|E|e|I|i|O|o|R|r|U|u|B|b|C|c|E|e|F|f|G|g|H|h|J|j|K|k|M|m|P|p|Q|q|R|r|S|s|V|v|W|w|X|x|Y|y|A|a|B|b|D|d|E|e|E|e|H|h|I|i|I|i|M|m|O|o|Q|q|U|u|X|x|Z|z|и|И|е|Е"
+	actual := prepare_value(input, false)
+	defer delete(actual)
+	testing.expect_value(t, actual, expected)
+}
+
+@(test)
+javascript_value_coercion_and_utf16_scoring_test :: proc(t: ^testing.T) {
+	values := []Value{
+		undefined_value(), null_value(), bool_value(true), number_value(-0.0),
+		number_value(math.inf_f64(1)), number_value(math.inf_f64(-1)), number_value(math.nan_f64()),
+		array_value([]Value{string_value("a"), null_value(), number_value(2), object()}),
+	}
+	expected := []string{"undefined", "null", "true", "0", "Infinity", "-Infinity", "NaN", "a,,2,[object Object]"}
+	for value, index in values {
+		actual := value_to_string(value)
+		if value.kind == .Array { defer delete(actual) }
+		testing.expect_value(t, actual, expected[index])
+	}
+	rank := get_match_ranking("😀ab", "😀b")
+	testing.expect_value(t, rank, MATCHES+Ranking(1.0/3.0))
+	unlisted := prepare_value("A\u0301", false)
+	defer delete(unlisted)
+	testing.expect_value(t, unlisted, "A\u0301")
+}
+
+@(test)
+ranked_result_survives_scratch_rewind_test :: proc(t: ^testing.T) {
+	search: Search_Context
+	testing.expect(t, search_context_init(&search) == nil)
+	defer search_context_destroy(&search)
+	items := []Value{string_value("hello"), string_value("hey"), string_value("sup")}
+	result := match_with_rank_info(&search, items, "h", Options{})
+	defer ranked_result_destroy(&result)
+	other := match_indices(&search, items, "s", Options{})
+	defer delete(other)
+	testing.expect_value(t, result.items[0].ranked_value, "hello")
+	testing.expect_value(t, result.items[1].ranked_value, "hey")
+}
+
+@(test)
+hundred_thousand_items_reuse_scratch_without_copying_input_test :: proc(t: ^testing.T) {
+	search: Search_Context
+	testing.expect(t, search_context_init(&search) == nil)
+	defer search_context_destroy(&search)
+	items := make([]string, 100_000)
+	defer delete(items)
+	for &item in items { item = "record" }
+	input_address := raw_data(items)
+	first := match_indices(&search, items, "z", Typed_Options(string){})
+	defer delete(first)
+	committed_after_first := search.scratch.curr_block.committed
+	second := match_indices(&search, items, "z", Typed_Options(string){})
+	defer delete(second)
+	testing.expect_value(t, len(first), 0)
+	testing.expect_value(t, len(second), 0)
+	testing.expect(t, raw_data(items) == input_address)
+	testing.expect_value(t, search.scratch.total_used, uint(0))
+	testing.expect_value(t, search.scratch.curr_block.committed, committed_after_first)
 }
