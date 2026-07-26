@@ -25,6 +25,14 @@ Search_Context :: struct {
 	locale:       Mac_Locale,
 }
 
+Prepared_Query :: struct {
+	prepared:        string,
+	prepared_units:  []u16,
+	lower:           string,
+	lower_units:     []u16,
+	keep_diacritics: bool,
+}
+
 search_context_init :: proc(
 	search: ^Search_Context,
 	reserve_size := uint(mem.Gigabyte),
@@ -293,6 +301,7 @@ rank_typed_items :: proc(
 	options: Typed_Options(T),
 	allocator: mem.Allocator,
 ) -> []Ranked_Index {
+	prepared_query := prepare_query(query, options.keep_diacritics, context.temp_allocator)
 	ranked := make([dynamic]Ranked_Index, 0, len(items), allocator)
 	threshold := MATCHES
 	if options.has_threshold { threshold = options.threshold }
@@ -301,7 +310,7 @@ rank_typed_items :: proc(
 		if len(options.keys) == 0 {
 			when T == string {
 				best.ranked_value = item
-				best.rank = get_match_ranking(item, query, options.keep_diacritics)
+				best.rank = get_match_ranking_prepared(item, &prepared_query)
 			}
 		} else {
 			flattened_key_index := 0
@@ -316,7 +325,7 @@ rank_typed_items :: proc(
 					continue
 				}
 				for value in values {
-					rank := get_match_ranking(value, query, options.keep_diacritics)
+					rank := get_match_ranking_prepared(value, &prepared_query)
 					if key.attributes.has_min && rank < key.attributes.min_ranking && rank >= MATCHES {
 						rank = key.attributes.min_ranking
 					} else if key.attributes.has_max && rank > key.attributes.max_ranking {
@@ -404,9 +413,10 @@ match_sorter :: proc(items: []Value, query: string, options := Options{}, alloca
 }
 
 match_sorter_with_rank_info :: proc(items: []Value, query: string, options := Options{}, allocator := context.allocator) -> []Ranked_Item {
+	prepared_query := prepare_query(query, options.keep_diacritics, context.temp_allocator)
 	result := make([dynamic]Ranked_Item, 0, len(items), allocator)
 	for item, index in items {
-		info := get_highest_ranking(item, query, options)
+		info := get_highest_ranking_prepared(item, &prepared_query, options)
 		threshold := MATCHES
 		if options.has_threshold { threshold = options.threshold }
 		if info.has_key_threshold { threshold = info.key_threshold }
@@ -423,16 +433,25 @@ match_sorter_with_rank_info :: proc(items: []Value, query: string, options := Op
 }
 
 get_highest_ranking :: proc(item: Value, query: string, options: Options) -> Ranking_Info {
+	prepared_query := prepare_query(query, options.keep_diacritics, context.temp_allocator)
+	return get_highest_ranking_prepared(item, &prepared_query, options)
+}
+
+get_highest_ranking_prepared :: proc(
+	item: Value,
+	query: ^Prepared_Query,
+	options: Options,
+) -> Ranking_Info {
 	if !options.has_keys {
 		value := value_to_string(item, context.temp_allocator)
-		return {value, get_match_ranking(value, query, options.keep_diacritics), -1, false, 0}
+		return {value, get_match_ranking_prepared(value, query), -1, false, 0}
 	}
 	best := Ranking_Info{value_to_string(item, context.temp_allocator), NO_MATCH, -1, false, 0}
 	value_index := 0
 	for key in options.keys {
 		values := get_item_values(item, key, context.temp_allocator)
 		for value in values {
-			rank := get_match_ranking(value, query, options.keep_diacritics)
+			rank := get_match_ranking_prepared(value, query)
 			if key.attributes.has_min && rank < key.attributes.min_ranking && rank >= MATCHES {
 				rank = key.attributes.min_ranking
 			} else if key.attributes.has_max && rank > key.attributes.max_ranking {
@@ -448,16 +467,21 @@ get_highest_ranking :: proc(item: Value, query: string, options: Options) -> Ran
 }
 
 get_match_ranking :: proc(test_value, query: string, keep_diacritics := false) -> Ranking {
-	test := prepare_value(test_value, keep_diacritics, context.temp_allocator)
-	needle := prepare_value(query, keep_diacritics, context.temp_allocator)
+	prepared_query := prepare_query(query, keep_diacritics, context.temp_allocator)
+	return get_match_ranking_prepared(test_value, &prepared_query)
+}
+
+get_match_ranking_prepared :: proc(
+	test_value: string,
+	query: ^Prepared_Query,
+) -> Ranking {
+	test := prepare_value(test_value, query.keep_diacritics, context.temp_allocator)
 	test_units := string_to_utf16(test, context.temp_allocator)
-	needle_units := string_to_utf16(needle, context.temp_allocator)
-	if len(needle_units) > len(test_units) { return NO_MATCH }
-	if test == needle { return CASE_SENSITIVE_EQUAL }
+	if len(query.prepared_units) > len(test_units) { return NO_MATCH }
+	if test == query.prepared { return CASE_SENSITIVE_EQUAL }
 	lower_test := strings.to_lower(test, context.temp_allocator)
-	lower_needle := strings.to_lower(needle, context.temp_allocator)
 	test_units = string_to_utf16(lower_test, context.temp_allocator)
-	needle_units = string_to_utf16(lower_needle, context.temp_allocator)
+	needle_units := query.lower_units
 	first := index_of_units(test_units, needle_units, 0)
 	if len(test_units) == len(needle_units) && first == 0 { return EQUAL }
 	if first == 0 { return STARTS_WITH }
@@ -670,6 +694,22 @@ string_to_utf16 :: proc(value: string, allocator := context.allocator) -> []u16 
 	buffer := make([]u16, len(value), allocator)
 	count := utf16.encode_string(buffer, value)
 	return buffer[:count]
+}
+
+prepare_query :: proc(
+	query: string,
+	keep_diacritics: bool,
+	allocator := context.allocator,
+) -> Prepared_Query {
+	prepared := prepare_value(query, keep_diacritics, allocator)
+	lower := strings.to_lower(prepared, allocator)
+	return Prepared_Query{
+		prepared = prepared,
+		prepared_units = string_to_utf16(prepared, allocator),
+		lower = lower,
+		lower_units = string_to_utf16(lower, allocator),
+		keep_diacritics = keep_diacritics,
+	}
 }
 
 prepare_value :: proc(value: string, keep_diacritics: bool, allocator := context.allocator) -> string {

@@ -64,7 +64,9 @@ The caller owns every input `Value`, nested slice, field name, and string. Searc
 
 ## Memory ownership
 
-`Search_Context` reserves 1 GiB of virtual address space by default and initially commits 1 MiB. A query allocates normalized strings, UTF-16 units, extracted values, merge-sort storage, and ranked candidates from that arena. At return, the query rewinds its arena checkpoint, retaining committed pages for the next search.
+`Search_Context` reserves 1 GiB of virtual address space by default and initially commits 1 MiB. Each search prepares its query once in this arena. The prepared query contains its normalized text, lowercase text, and UTF-16 units.
+
+The ranking loop transforms each candidate value in scratch storage. It reuses the prepared query for every candidate and extracted field. At return, the search rewinds its arena checkpoint and retains committed pages for the next search.
 
 The input dataset remains in the caller's heap or arena. Index and item results use the result allocator passed to the matching procedure and must be deleted with that allocator. Ranked metadata clones its `ranked_value` strings into the result allocator and therefore uses `ranked_result_destroy` for complete teardown.
 
@@ -85,5 +87,16 @@ This package is macOS-specific because the default comparator links CoreFoundati
 ```sh
 odin test .
 ```
+
+Run the optional query benchmark with:
+
+```sh
+odin test . -o:speed \
+  -define:MATCH_SORTER_BENCHMARK=true \
+  -define:ODIN_TEST_NAMES=prepared_query_benchmark \
+  -define:ODIN_TEST_THREADS=1
+```
+
+The benchmark ranks 10,000 candidates with four extracted values each. It reports the candidate count, extracted value count, scratch bytes, elapsed time, and match count.
 
 See [`LICENSE`](LICENSE) and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for license terms and dependency attribution.

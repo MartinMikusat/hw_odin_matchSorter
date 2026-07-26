@@ -252,6 +252,44 @@ diacritics_closeness_and_unicode_case_test :: proc(t: ^testing.T) {
 	expect_strings(t, cyrillic, []string{"Лед"})
 }
 
+Prepared_Query_Test_Case :: struct {
+	value:            string,
+	query:            string,
+	keep_diacritics:  bool,
+	expected:         Ranking,
+}
+
+@(test)
+prepared_query_scoring_parity_test :: proc(t: ^testing.T) {
+	cases := []Prepared_Query_Test_Case{
+		{value="Ada", query="Ada", expected=CASE_SENSITIVE_EQUAL},
+		{value="Ada", query="ada", expected=EQUAL},
+		{value="Ada Lovelace", query="ada", expected=STARTS_WITH},
+		{value="The Ada", query="ada", expected=WORD_STARTS_WITH},
+		{value="Grenada", query="ada", expected=CONTAINS},
+		{value="Amazing Grace", query="ag", expected=ACRONYM},
+		{value="café", query="cafe", expected=CASE_SENSITIVE_EQUAL},
+		{value="café", query="cafe", keep_diacritics=true, expected=NO_MATCH},
+		{value="😀ab", query="😀b", expected=MATCHES+Ranking(1.0/3.0)},
+		{value="", query="", expected=CASE_SENSITIVE_EQUAL},
+	}
+	for test_case in cases {
+		prepared := prepare_query(
+			test_case.query,
+			test_case.keep_diacritics,
+			context.temp_allocator,
+		)
+		prepared_rank := get_match_ranking_prepared(test_case.value, &prepared)
+		public_rank := get_match_ranking(
+			test_case.value,
+			test_case.query,
+			test_case.keep_diacritics,
+		)
+		testing.expect_value(t, prepared_rank, test_case.expected)
+		testing.expect_value(t, public_rank, prepared_rank)
+	}
+}
+
 reverse_base_sort :: proc(a, b: ^Ranked_Item) -> int {
 	return -1 if a.index < b.index else 1
 }
@@ -356,6 +394,55 @@ typed_name_getter :: proc(item: ^Typed_Test_Item) -> Extracted_Values {
 
 typed_aliases_getter :: proc(item: ^Typed_Test_Item) -> Extracted_Values {
 	return many_values(item.aliases)
+}
+
+@(test)
+typed_and_dynamic_multifield_rank_parity_test :: proc(t: ^testing.T) {
+	search: Search_Context
+	testing.expect(t, search_context_init(&search) == nil)
+	defer search_context_destroy(&search)
+	typed_items := []Typed_Test_Item{
+		{name="Voice", aliases=[]string{"lead", "voice"}},
+		{name="Breath", aliases=[]string{"voice", "support"}},
+		{name="voice", aliases=[]string{"other", "voice"}},
+		{name="Unrelated", aliases=[]string{"vocal exercise", "voice warmup"}},
+		{name="Voice", aliases=[]string{"lead", "voice"}},
+	}
+	dynamic_items := []Value{
+		object(field("name", string_value("Voice")), field("aliases", array(string_value("lead"), string_value("voice")))),
+		object(field("name", string_value("Breath")), field("aliases", array(string_value("voice"), string_value("support")))),
+		object(field("name", string_value("voice")), field("aliases", array(string_value("other"), string_value("voice")))),
+		object(field("name", string_value("Unrelated")), field("aliases", array(string_value("vocal exercise"), string_value("voice warmup")))),
+		object(field("name", string_value("Voice")), field("aliases", array(string_value("lead"), string_value("voice")))),
+	}
+	typed_keys := []Typed_Key(Typed_Test_Item){
+		{getter=typed_name_getter},
+		{getter=typed_aliases_getter},
+	}
+	dynamic_keys := []Key{{path="name"}, {path="aliases"}}
+	typed_result := match_with_rank_info(
+		&search,
+		typed_items,
+		"voice",
+		Typed_Options(Typed_Test_Item){keys=typed_keys},
+	)
+	defer ranked_result_destroy(&typed_result)
+	dynamic_result := match_with_rank_info(
+		&search,
+		dynamic_items,
+		"voice",
+		Options{keys=dynamic_keys, has_keys=true},
+	)
+	defer ranked_result_destroy(&dynamic_result)
+	testing.expect_value(t, len(typed_result.items), len(dynamic_result.items))
+	if len(typed_result.items) != len(dynamic_result.items) { return }
+	for typed_item, index in typed_result.items {
+		dynamic_item := dynamic_result.items[index]
+		testing.expect_value(t, typed_item.item_index, dynamic_item.item_index)
+		testing.expect_value(t, typed_item.ranked_value, dynamic_item.ranked_value)
+		testing.expect_value(t, typed_item.rank, dynamic_item.rank)
+		testing.expect_value(t, typed_item.key_index, dynamic_item.key_index)
+	}
 }
 
 @(test)
