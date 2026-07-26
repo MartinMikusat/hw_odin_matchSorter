@@ -58,6 +58,8 @@ defer delete(indices)
 
 `match_items` returns a shallow item copy when that shape is more convenient. `match_with_rank_info` returns owned `ranked_value` strings and must be released with `ranked_result_destroy`.
 
+`match_indices_into_typed` clears and fills a caller-owned dynamic index buffer. Initialize the buffer with the required allocator before the first call. The procedure retains its capacity across searches.
+
 ## Dynamic compatibility API
 
 The tagged `Value` tree represents JavaScript-shaped null, undefined, scalar, array, and object data. `match_indices`, `match_items`, and `match_with_rank_info` select the dynamic overload when passed `[]Value` and `Options`. Dynamic keys support direct properties, dotted paths, numeric array indices, `*` wildcards, and callbacks.
@@ -70,7 +72,7 @@ The caller owns every input `Value`, nested slice, field name, and string. Searc
 
 The ranking loop transforms each candidate value in scratch storage. It reuses the prepared query for every candidate and extracted field. At return, the search rewinds its arena checkpoint and retains committed pages for the next search.
 
-The input dataset remains in the caller's heap or arena. Index and item results use the result allocator passed to the matching procedure and must be deleted with that allocator. Ranked metadata clones its `ranked_value` strings into the result allocator and therefore uses `ranked_result_destroy` for complete teardown.
+The input dataset remains in the caller's heap or arena. Index and item results use the result allocator passed to the matching procedure and must be deleted with that allocator. `match_indices_into_typed` uses the allocator stored in the caller's dynamic buffer. Ranked metadata clones its `ranked_value` strings into the result allocator and therefore uses `ranked_result_destroy` for complete teardown.
 
 A context supports sequential reuse. Concurrent searches use one context per thread. `search_context_destroy` releases the virtual-memory reservation and the retained `en_US` CoreFoundation locale.
 

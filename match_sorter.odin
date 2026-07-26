@@ -255,6 +255,27 @@ match_indices_typed :: proc(
 	return result
 }
 
+match_indices_into_typed :: proc(
+	search: ^Search_Context,
+	items: []$T,
+	query: string,
+	options: Typed_Options(T),
+	result: ^[dynamic]int,
+) {
+	assert(result != nil, "Result buffer must not be nil")
+	clear(result)
+	temp := mem_virtual.arena_temp_begin(&search.scratch)
+	defer mem_virtual.arena_temp_end(temp)
+	scratch := search_scratch_allocator(search)
+	context.temp_allocator = scratch
+	search_options := options
+	search_options.locale = search.locale
+	ranked := rank_typed_items(items, query, search_options, scratch)
+	for candidate in ranked {
+		append(result, candidate.item_index)
+	}
+}
+
 match_items_typed :: proc(
 	search: ^Search_Context,
 	items: []$T,

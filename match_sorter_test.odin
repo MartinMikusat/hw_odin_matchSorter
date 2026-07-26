@@ -470,6 +470,32 @@ typed_indices_borrow_input_and_reset_scratch_test :: proc(t: ^testing.T) {
 }
 
 @(test)
+typed_indices_into_reuses_caller_buffer_test :: proc(t: ^testing.T) {
+	search: Search_Context
+	testing.expect(t, search_context_init(&search) == nil)
+	defer search_context_destroy(&search)
+	items := []string{"hello", "hey", "sup", "yo"}
+	expected := match_indices(&search, items, "h", Typed_Options(string){})
+	defer delete(expected)
+	result := make([dynamic]int, 0, len(items))
+	defer delete(result)
+	match_indices_into_typed(&search, items, "h", Typed_Options(string){}, &result)
+	testing.expect_value(t, len(result), len(expected))
+	for value, index in result {
+		testing.expect_value(t, value, expected[index])
+	}
+	buffer := raw_data(result[:])
+	result_capacity := cap(result)
+	match_indices_into_typed(&search, items, "z", Typed_Options(string){}, &result)
+	testing.expect_value(t, len(result), 0)
+	testing.expect_value(t, cap(result), result_capacity)
+	match_indices_into_typed(&search, items, "he", Typed_Options(string){}, &result)
+	testing.expect(t, raw_data(result[:]) == buffer)
+	testing.expect_value(t, cap(result), result_capacity)
+	testing.expect_value(t, search.scratch.total_used, uint(0))
+}
+
+@(test)
 context_uses_fixed_en_us_collation_test :: proc(t: ^testing.T) {
 	search: Search_Context
 	testing.expect(t, search_context_init(&search) == nil)
