@@ -2,7 +2,13 @@ package match_sorter
 
 import CF "core:sys/darwin/CoreFoundation"
 
+MATCH_SORTER_BENCHMARK :: #config(MATCH_SORTER_BENCHMARK, false)
+
 Mac_Locale :: distinct CF.TypeRef
+Mac_Sort_String :: CF.String
+
+benchmark_cf_string_creations: int
+benchmark_cf_string_comparisons: int
 
 foreign import CoreFoundation "system:CoreFoundation.framework"
 
@@ -25,6 +31,9 @@ foreign CoreFoundation {
 }
 
 mac_string_create :: proc(value: string) -> CF.String {
+	when MATCH_SORTER_BENCHMARK {
+		benchmark_cf_string_creations += 1
+	}
 	return StringCreateWithBytes(
 		CF.TypeRef(nil),
 		raw_data(value),
@@ -44,17 +53,43 @@ mac_locale_destroy :: proc(locale: Mac_Locale) {
 	if locale != Mac_Locale(nil) { CF.Release(CF.TypeRef(locale)) }
 }
 
-mac_compare_strings :: proc(a, b: string, locale: Mac_Locale) -> int {
-	a_string := mac_string_create(a)
-	defer CF.Release(a_string)
-	b_string := mac_string_create(b)
-	defer CF.Release(b_string)
+mac_sort_string_create :: proc(value: string) -> Mac_Sort_String {
+	return mac_string_create(value)
+}
+
+mac_sort_strings_destroy :: proc(values: []Mac_Sort_String) {
+	for value in values {
+		if value != Mac_Sort_String(nil) { CF.Release(value) }
+	}
+}
+
+mac_compare_sort_strings :: proc(
+	a, b: Mac_Sort_String,
+	locale: Mac_Locale,
+) -> int {
+	when MATCH_SORTER_BENCHMARK {
+		benchmark_cf_string_comparisons += 1
+	}
 	result := StringCompareWithOptionsAndLocale(
-		a_string,
-		b_string,
-		{0, CF.StringGetLength(a_string)},
+		a,
+		b,
+		{0, CF.StringGetLength(a)},
 		CF.OptionFlags(0),
 		locale,
 	)
 	return int(result)
+}
+
+benchmark_mac_sort_reset :: proc() {
+	when MATCH_SORTER_BENCHMARK {
+		benchmark_cf_string_creations = 0
+		benchmark_cf_string_comparisons = 0
+	}
+}
+
+benchmark_mac_sort_stats :: proc() -> (creations, comparisons: int) {
+	when MATCH_SORTER_BENCHMARK {
+		return benchmark_cf_string_creations, benchmark_cf_string_comparisons
+	}
+	return 0, 0
 }

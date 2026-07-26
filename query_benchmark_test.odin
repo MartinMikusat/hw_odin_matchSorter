@@ -5,7 +5,6 @@ import "core:testing"
 import "core:time"
 import mem_virtual "core:mem/virtual"
 
-MATCH_SORTER_BENCHMARK :: #config(MATCH_SORTER_BENCHMARK, false)
 QUERY_BENCHMARK_CANDIDATES :: 10_000
 QUERY_BENCHMARK_EXTRACTED_VALUES :: 4
 

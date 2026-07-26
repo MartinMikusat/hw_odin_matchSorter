@@ -480,6 +480,18 @@ context_uses_fixed_en_us_collation_test :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(indices), 4)
 	expected := []int{3, 2, 1, 0}
 	for value, index in indices { testing.expect_value(t, value, expected[index]) }
+	typed_items := []string{"a'd", "a-c", "a_b", "a a"}
+	typed_indices := match_indices(
+		&search,
+		typed_items,
+		"",
+		Typed_Options(string){},
+	)
+	defer delete(typed_indices)
+	testing.expect_value(t, len(typed_indices), len(expected))
+	for value, index in typed_indices {
+		testing.expect_value(t, value, expected[index])
+	}
 }
 
 @(test)

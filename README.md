@@ -84,6 +84,12 @@ A context supports sequential reuse. Concurrent searches use one context per thr
 
 This package is macOS-specific because the default comparator links CoreFoundation.
 
+## Sorting implementation
+
+The default sorter preserves upstream `String.localeCompare` tie behavior with a fixed `en_US` CoreFoundation locale. Before sorting, it creates one `CFString` for each ranked candidate. The stable sort reuses these objects for every comparison, then releases the complete batch.
+
+This design takes inspiration from [FFF at commit `fde8c52`](https://github.com/dmtrKovalenko/fff/blob/fde8c52a298a2fa4375edf626e0c37b0400f5a8b/crates/fff-core/src/score.rs#L993-L1041). FFF calculates complete numeric score records before sorting, so its comparator only reads prepared metadata. This package applies the same preparation boundary but retains locale-aware text comparison to preserve `match-sorter` parity.
+
 ## Verification
 
 ```sh
@@ -100,5 +106,16 @@ odin test . -o:speed \
 ```
 
 The benchmark ranks 10,000 candidates with four extracted values each. It reports the candidate count, extracted value count, scratch bytes, elapsed time, and match count.
+
+Run the optional collation benchmark with:
+
+```sh
+odin test . -o:speed \
+  -define:MATCH_SORTER_BENCHMARK=true \
+  -define:ODIN_TEST_NAMES=collation_allocation_benchmark \
+  -define:ODIN_TEST_THREADS=1
+```
+
+The benchmark ranks 10,000 equal-rank candidates. It verifies one CoreFoundation string per candidate and reports the comparison count and elapsed time.
 
 See [`LICENSE`](LICENSE) and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for license terms and dependency attribution.

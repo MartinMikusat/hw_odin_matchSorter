@@ -360,6 +360,14 @@ stable_sort_typed :: proc(
 	allocator: mem.Allocator,
 ) {
 	if len(ranked) < 2 { return }
+	sort_strings: []Mac_Sort_String
+	if base_sort == nil && locale != Mac_Locale(nil) {
+		sort_strings = make([]Mac_Sort_String, len(items), allocator)
+		for candidate in ranked {
+			sort_strings[candidate.item_index] = mac_sort_string_create(candidate.ranked_value)
+		}
+	}
+	defer mac_sort_strings_destroy(sort_strings)
 	buffer := make([]Ranked_Index, len(ranked), allocator)
 	source := ranked
 	destination := buffer
@@ -370,7 +378,14 @@ stable_sort_typed :: proc(
 			end := min(start+width*2, len(ranked))
 			left, right, output := start, middle, start
 			for left < middle && right < end {
-				comparison := compare_typed_ranked(&source[left], &source[right], items, base_sort, locale)
+				comparison := compare_typed_ranked(
+					&source[left],
+					&source[right],
+					items,
+					base_sort,
+					locale,
+					sort_strings,
+				)
 				if comparison <= 0 { destination[output] = source[left]; left += 1 } else { destination[output] = source[right]; right += 1 }
 				output += 1
 			}
@@ -388,11 +403,18 @@ compare_typed_ranked :: proc(
 	items: []$T,
 	base_sort: proc(a, b: ^T, a_info, b_info: ^Ranked_Index) -> int,
 	locale: Mac_Locale,
+	sort_strings: []Mac_Sort_String,
 ) -> int {
 	if a.rank != b.rank { return -1 if a.rank > b.rank else 1 }
 	if a.key_index != b.key_index { return -1 if a.key_index < b.key_index else 1 }
 	if base_sort != nil { return base_sort(&items[a.item_index], &items[b.item_index], a, b) }
-	if locale != Mac_Locale(nil) { return mac_compare_strings(a.ranked_value, b.ranked_value, locale) }
+	if locale != Mac_Locale(nil) {
+		return mac_compare_sort_strings(
+			sort_strings[a.item_index],
+			sort_strings[b.item_index],
+			locale,
+		)
+	}
 	return default_compare_strings(a.ranked_value, b.ranked_value)
 }
 
@@ -427,7 +449,7 @@ match_sorter_with_rank_info :: proc(items: []Value, query: string, options := Op
 	if options.sorter != nil {
 		options.sorter(&result)
 	} else {
-		insertion_sort(result[:], options.base_sort, options.locale)
+		insertion_sort(result[:], options.base_sort, options.locale, len(items))
 	}
 	return result[:]
 }
@@ -646,9 +668,22 @@ collation_weight :: proc(r: rune) -> int {
 	return int(r)+16
 }
 
-insertion_sort :: proc(items: []Ranked_Item, base_sort: Base_Sort, locale: Mac_Locale) {
+insertion_sort :: proc(
+	items: []Ranked_Item,
+	base_sort: Base_Sort,
+	locale: Mac_Locale,
+	source_count: int,
+) {
 	compare := base_sort
 	if len(items) < 2 { return }
+	sort_strings: []Mac_Sort_String
+	if base_sort == nil && locale != Mac_Locale(nil) {
+		sort_strings = make([]Mac_Sort_String, source_count, context.temp_allocator)
+		for candidate in items {
+			sort_strings[candidate.index] = mac_sort_string_create(candidate.ranked_value)
+		}
+	}
+	defer mac_sort_strings_destroy(sort_strings)
 	buffer := make([]Ranked_Item, len(items), context.temp_allocator)
 	source := items
 	destination := buffer
@@ -659,7 +694,13 @@ insertion_sort :: proc(items: []Ranked_Item, base_sort: Base_Sort, locale: Mac_L
 			end := min(start+width*2, len(items))
 			left, right, output := start, middle, start
 			for left < middle && right < end {
-				comparison := compare_ranked(&source[left], &source[right], compare, locale)
+				comparison := compare_ranked(
+					&source[left],
+					&source[right],
+					compare,
+					locale,
+					sort_strings,
+				)
 				if comparison <= 0 { destination[output] = source[left]; left += 1 } else { destination[output] = source[right]; right += 1 }
 				output += 1
 			}
@@ -672,11 +713,22 @@ insertion_sort :: proc(items: []Ranked_Item, base_sort: Base_Sort, locale: Mac_L
 	if raw_data(source) != raw_data(items) { copy(items, source) }
 }
 
-compare_ranked :: proc(a, b: ^Ranked_Item, base_sort: Base_Sort, locale: Mac_Locale) -> int {
+compare_ranked :: proc(
+	a, b: ^Ranked_Item,
+	base_sort: Base_Sort,
+	locale: Mac_Locale,
+	sort_strings: []Mac_Sort_String,
+) -> int {
 	if a.rank != b.rank { return -1 if a.rank > b.rank else 1 }
 	if a.key_index != b.key_index { return -1 if a.key_index < b.key_index else 1 }
 	if base_sort != nil { return base_sort(a, b) }
-	if locale != Mac_Locale(nil) { return mac_compare_strings(a.ranked_value, b.ranked_value, locale) }
+	if locale != Mac_Locale(nil) {
+		return mac_compare_sort_strings(
+			sort_strings[a.index],
+			sort_strings[b.index],
+			locale,
+		)
+	}
 	return default_base_sort(a, b)
 }
 
