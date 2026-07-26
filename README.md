@@ -4,7 +4,9 @@ A macOS Odin port of Kent C. Dodds' [`match-sorter`](https://github.com/kentcdod
 
 ## AI-assisted development disclosure
 
-**This project was built using GPT-5.**
+Models used:
+
+- **GPT-5.6-Sol**
 
 The port implements the complete upstream ranking and option surface and carries all 42 upstream tests as individually named Odin tests. It also tests Odin-specific ownership, a 100,000-item search, UTF-16-compatible scoring, and the complete `remove-accents@0.5.0` table.
 
