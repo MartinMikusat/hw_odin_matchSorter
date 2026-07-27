@@ -652,6 +652,34 @@ context_uses_fixed_en_us_collation_test :: proc(t: ^testing.T) {
 }
 
 @(test)
+direct_compatibility_uses_fixed_en_us_collation_test :: proc(t: ^testing.T) {
+	items := []string{"A", "a"}
+
+	strings_result := match_sorter_strings(items, "")
+	defer delete(strings_result)
+	expect_strings(t, strings_result, []string{"a", "A"})
+
+	values := []Value{string_value("A"), string_value("a")}
+	values_result := match_sorter(values, "")
+	defer delete(values_result)
+	testing.expect_value(t, values_result[0].string, "a")
+	testing.expect_value(t, values_result[1].string, "A")
+
+	ranked_result := match_sorter_with_rank_info(values, "")
+	defer delete(ranked_result)
+	testing.expect_value(t, ranked_result[0].index, 1)
+	testing.expect_value(t, ranked_result[1].index, 0)
+
+	search: Search_Context
+	testing.expect(t, search_context_init(&search) == nil)
+	defer search_context_destroy(&search)
+	context_result := match_indices(&search, values, "", Options{})
+	defer delete(context_result)
+	testing.expect_value(t, context_result[0], ranked_result[0].index)
+	testing.expect_value(t, context_result[1], ranked_result[1].index)
+}
+
+@(test)
 remove_accents_0_5_0_complete_mapping_test :: proc(t: ^testing.T) {
 	input := "À|Á|Â|Ã|Ä|Å|Ấ|Ắ|Ẳ|Ẵ|Ặ|Æ|Ầ|Ằ|Ȃ|Ả|Ạ|Ẩ|Ẫ|Ậ|Ç|Ḉ|È|É|Ê|Ë|Ế|Ḗ|Ề|Ḕ|Ḝ|Ȇ|Ẻ|Ẽ|Ẹ|Ể|Ễ|Ệ|Ì|Í|Î|Ï|Ḯ|Ȋ|Ỉ|Ị|Ð|Ñ|Ò|Ó|Ô|Õ|Ö|Ø|Ố|Ṍ|Ṓ|Ȏ|Ỏ|Ọ|Ổ|Ỗ|Ộ|Ờ|Ở|Ỡ|Ớ|Ợ|Ù|Ú|Û|Ü|Ủ|Ụ|Ử|Ữ|Ự|Ý|à|á|â|ã|ä|å|ấ|ắ|ẳ|ẵ|ặ|æ|ầ|ằ|ȃ|ả|ạ|ẩ|ẫ|ậ|ç|ḉ|è|é|ê|ë|ế|ḗ|ề|ḕ|ḝ|ȇ|ẻ|ẽ|ẹ|ể|ễ|ệ|ì|í|î|ï|ḯ|ȋ|ỉ|ị|ð|ñ|ò|ó|ô|õ|ö|ø|ố|ṍ|ṓ|ȏ|ỏ|ọ|ổ|ỗ|ộ|ờ|ở|ỡ|ớ|ợ|ù|ú|û|ü|ủ|ụ|ử|ữ|ự|ý|ÿ|Ā|ā|Ă|ă|Ą|ą|Ć|ć|Ĉ|ĉ|Ċ|ċ|Č|č|C̆|c̆|Ď|ď|Đ|đ|Ē|ē|Ĕ|ĕ|Ė|ė|Ę|ę|Ě|ě|Ĝ|Ǵ|ĝ|ǵ|Ğ|ğ|Ġ|ġ|Ģ|ģ|Ĥ|ĥ|Ħ|ħ|Ḫ|ḫ|Ĩ|ĩ|Ī|ī|Ĭ|ĭ|Į|į|İ|ı|Ĳ|ĳ|Ĵ|ĵ|Ķ|ķ|Ḱ|ḱ|K̆|k̆|Ĺ|ĺ|Ļ|ļ|Ľ|ľ|Ŀ|ŀ|Ł|ł|Ḿ|ḿ|M̆|m̆|Ń|ń|Ņ|ņ|Ň|ň|ŉ|N̆|n̆|Ō|ō|Ŏ|ŏ|Ő|ő|Œ|œ|P̆|p̆|Ŕ|ŕ|Ŗ|ŗ|Ř|ř|R̆|r̆|Ȓ|ȓ|Ś|ś|Ŝ|ŝ|Ş|Ș|ș|ş|Š|š|Ţ|ţ|ț|Ț|Ť|ť|Ŧ|ŧ|T̆|t̆|Ũ|ũ|Ū|ū|Ŭ|ŭ|Ů|ů|Ű|ű|Ų|ų|Ȗ|ȗ|V̆|v̆|Ŵ|ŵ|Ẃ|ẃ|X̆|x̆|Ŷ|ŷ|Ÿ|Y̆|y̆|Ź|ź|Ż|ż|Ž|ž|ſ|ƒ|Ơ|ơ|Ư|ư|Ǎ|ǎ|Ǐ|ǐ|Ǒ|ǒ|Ǔ|ǔ|Ǖ|ǖ|Ǘ|ǘ|Ǚ|ǚ|Ǜ|ǜ|Ứ|ứ|Ṹ|ṹ|Ǻ|ǻ|Ǽ|ǽ|Ǿ|ǿ|Þ|þ|Ṕ|ṕ|Ṥ|ṥ|X́|x́|Ѓ|ѓ|Ќ|ќ|A̋|a̋|E̋|e̋|I̋|i̋|Ǹ|ǹ|Ồ|ồ|Ṑ|ṑ|Ừ|ừ|Ẁ|ẁ|Ỳ|ỳ|Ȁ|ȁ|Ȅ|ȅ|Ȉ|ȉ|Ȍ|ȍ|Ȑ|ȑ|Ȕ|ȕ|B̌|b̌|Č̣|č̣|Ê̌|ê̌|F̌|f̌|Ǧ|ǧ|Ȟ|ȟ|J̌|ǰ|Ǩ|ǩ|M̌|m̌|P̌|p̌|Q̌|q̌|Ř̩|ř̩|Ṧ|ṧ|V̌|v̌|W̌|w̌|X̌|x̌|Y̌|y̌|A̧|a̧|B̧|b̧|Ḑ|ḑ|Ȩ|ȩ|Ɛ̧|ɛ̧|Ḩ|ḩ|I̧|i̧|Ɨ̧|ɨ̧|M̧|m̧|O̧|o̧|Q̧|q̧|U̧|u̧|X̧|x̧|Z̧|z̧|й|Й|ё|Ё"
 	expected := "A|A|A|A|A|A|A|A|A|A|A|AE|A|A|A|A|A|A|A|A|C|C|E|E|E|E|E|E|E|E|E|E|E|E|E|E|E|E|I|I|I|I|I|I|I|I|D|N|O|O|O|O|O|O|O|O|O|O|O|O|O|O|O|O|O|O|O|O|U|U|U|U|U|U|U|U|U|Y|a|a|a|a|a|a|a|a|a|a|a|ae|a|a|a|a|a|a|a|a|c|c|e|e|e|e|e|e|e|e|e|e|e|e|e|e|e|e|i|i|i|i|i|i|i|i|d|n|o|o|o|o|o|o|o|o|o|o|o|o|o|o|o|o|o|o|o|o|u|u|u|u|u|u|u|u|u|y|y|A|a|A|a|A|a|C|c|C|c|C|c|C|c|C|c|D|d|D|d|E|e|E|e|E|e|E|e|E|e|G|G|g|g|G|g|G|g|G|g|H|h|H|h|H|h|I|i|I|i|I|i|I|i|I|i|IJ|ij|J|j|K|k|K|k|K|k|L|l|L|l|L|l|L|l|l|l|M|m|M|m|N|n|N|n|N|n|n|N|n|O|o|O|o|O|o|OE|oe|P|p|R|r|R|r|R|r|R|r|R|r|S|s|S|s|S|S|s|s|S|s|T|t|t|T|T|t|T|t|T|t|U|u|U|u|U|u|U|u|U|u|U|u|U|u|V|v|W|w|W|w|X|x|Y|y|Y|Y|y|Z|z|Z|z|Z|z|s|f|O|o|U|u|A|a|I|i|O|o|U|u|U|u|U|u|U|u|U|u|U|u|U|u|A|a|AE|ae|O|o|TH|th|P|p|S|s|X|x|Г|г|К|к|A|a|E|e|I|i|N|n|O|o|O|o|U|u|W|w|Y|y|A|a|E|e|I|i|O|o|R|r|U|u|B|b|C|c|E|e|F|f|G|g|H|h|J|j|K|k|M|m|P|p|Q|q|R|r|S|s|V|v|W|w|X|x|Y|y|A|a|B|b|D|d|E|e|E|e|H|h|I|i|I|i|M|m|O|o|Q|q|U|u|X|x|Z|z|и|И|е|Е"

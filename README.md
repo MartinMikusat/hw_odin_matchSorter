@@ -93,6 +93,8 @@ This package is macOS-specific because the default comparator links CoreFoundati
 
 The default sorter preserves upstream `String.localeCompare` tie behavior with a fixed `en_US` CoreFoundation locale. Before sorting, it creates one `CFString` for each ranked candidate. The stable sort reuses these objects for every comparison, then releases the complete batch.
 
+Context-backed searches retain one locale across calls. Direct compatibility procedures create and release a locale when they run the default tie sort.
+
 This design takes inspiration from [FFF at commit `fde8c52`](https://github.com/dmtrKovalenko/fff/blob/fde8c52a298a2fa4375edf626e0c37b0400f5a8b/crates/fff-core/src/score.rs#L993-L1041). FFF calculates complete numeric score records before sorting, so its comparator only reads prepared metadata. This package applies the same preparation boundary but retains locale-aware text comparison to preserve `match-sorter` parity.
 
 ## Verification

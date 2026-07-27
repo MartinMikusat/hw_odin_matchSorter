@@ -481,7 +481,12 @@ match_sorter_with_rank_info :: proc(items: []Value, query: string, options := Op
 	if options.sorter != nil {
 		options.sorter(&result)
 	} else {
-		insertion_sort(result[:], options.base_sort, options.locale, len(items))
+		locale := options.locale
+		if len(result) > 1 && options.base_sort == nil && locale == Mac_Locale(nil) {
+			locale = mac_locale_create_en_us()
+			defer mac_locale_destroy(locale)
+		}
+		insertion_sort(result[:], options.base_sort, locale, len(items))
 	}
 	return result[:]
 }
