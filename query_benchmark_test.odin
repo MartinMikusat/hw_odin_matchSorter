@@ -32,8 +32,8 @@ prepared_query_benchmark :: proc(t: ^testing.T) {
 			"exercise playback control",
 		}
 	}
-	keys := []Typed_Key(Query_Benchmark_Item){{getter=query_benchmark_values}}
-	options := Typed_Options(Query_Benchmark_Item){keys=keys, locale=search.locale}
+	keys := []Key(Query_Benchmark_Item){{getter=query_benchmark_values}}
+	options := Options(Query_Benchmark_Item){keys=keys}
 	temp := mem_virtual.arena_temp_begin(&search.scratch)
 	defer mem_virtual.arena_temp_end(temp)
 	scratch := search_scratch_allocator(&search)
@@ -42,12 +42,13 @@ prepared_query_benchmark :: proc(t: ^testing.T) {
 	context.temp_allocator = scratch
 	used_before := search.scratch.total_used
 	started := time.now()
-	ranked := rank_typed_items(
+	ranked, search_error := rank_items(
 		items,
 		"žltý warmup 😀",
 		options,
 		scratch,
 	)
+	testing.expect_value(t, search_error, Search_Error.None)
 	elapsed := time.since(started)
 	fmt.printf(
 		"[query-benchmark] candidates=%d extracted_values=%d scratch_bytes=%d elapsed_ns=%d matches=%d\n",
