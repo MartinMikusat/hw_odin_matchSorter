@@ -72,6 +72,9 @@ The caller owns every input `Value`, nested slice, field name, and string. Searc
 
 The ranking loop transforms each candidate value in scratch storage. It reuses the prepared query for every candidate and extracted field. At return, the search rewinds its arena checkpoint and retains committed pages for the next search.
 
+Each search restores the caller's temporary allocator before it returns. Caller
+temporary allocations do not become part of the search arena.
+
 The input dataset remains in the caller's heap or arena. Index and item results use the result allocator passed to the matching procedure and must be deleted with that allocator. `match_indices_into_typed` uses the allocator stored in the caller's dynamic buffer. Ranked metadata clones its `ranked_value` strings into the result allocator and therefore uses `ranked_result_destroy` for complete teardown.
 
 A context supports sequential reuse. Concurrent searches use one context per thread. `search_context_destroy` releases the virtual-memory reservation and the retained `en_US` CoreFoundation locale.

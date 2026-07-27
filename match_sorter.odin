@@ -59,6 +59,17 @@ search_scratch_allocator :: proc(search: ^Search_Context) -> mem.Allocator {
 	return mem_virtual.arena_allocator(&search.scratch)
 }
 
+search_temp_allocator_guard_end :: proc(previous: mem.Allocator) {
+	context.temp_allocator = previous
+}
+
+@(deferred_out=search_temp_allocator_guard_end)
+search_temp_allocator_guard :: proc(scratch: mem.Allocator) -> mem.Allocator {
+	previous := context.temp_allocator
+	context.temp_allocator = scratch
+	return previous
+}
+
 Value_Kind :: enum {Null, Undefined, String, Number, Bool, Array, Object}
 
 Value :: struct {
@@ -185,7 +196,7 @@ match_indices_dynamic :: proc(
 	temp := mem_virtual.arena_temp_begin(&search.scratch)
 	defer mem_virtual.arena_temp_end(temp)
 	scratch := search_scratch_allocator(search)
-	context.temp_allocator = scratch
+	search_temp_allocator_guard(scratch)
 	search_options := options
 	search_options.locale = search.locale
 	ranked := match_sorter_with_rank_info(items, query, search_options, scratch)
@@ -218,7 +229,7 @@ match_with_rank_info_dynamic :: proc(
 	temp := mem_virtual.arena_temp_begin(&search.scratch)
 	defer mem_virtual.arena_temp_end(temp)
 	scratch := search_scratch_allocator(search)
-	context.temp_allocator = scratch
+	search_temp_allocator_guard(scratch)
 	search_options := options
 	search_options.locale = search.locale
 	ranked := match_sorter_with_rank_info(items, query, search_options, scratch)
@@ -246,7 +257,7 @@ match_indices_typed :: proc(
 	temp := mem_virtual.arena_temp_begin(&search.scratch)
 	defer mem_virtual.arena_temp_end(temp)
 	scratch := search_scratch_allocator(search)
-	context.temp_allocator = scratch
+	search_temp_allocator_guard(scratch)
 	search_options := options
 	search_options.locale = search.locale
 	ranked := rank_typed_items(items, query, search_options, scratch)
@@ -267,7 +278,7 @@ match_indices_into_typed :: proc(
 	temp := mem_virtual.arena_temp_begin(&search.scratch)
 	defer mem_virtual.arena_temp_end(temp)
 	scratch := search_scratch_allocator(search)
-	context.temp_allocator = scratch
+	search_temp_allocator_guard(scratch)
 	search_options := options
 	search_options.locale = search.locale
 	ranked := rank_typed_items(items, query, search_options, scratch)
@@ -300,7 +311,7 @@ match_with_rank_info_typed :: proc(
 	temp := mem_virtual.arena_temp_begin(&search.scratch)
 	defer mem_virtual.arena_temp_end(temp)
 	scratch := search_scratch_allocator(search)
-	context.temp_allocator = scratch
+	search_temp_allocator_guard(scratch)
 	search_options := options
 	search_options.locale = search.locale
 	ranked := rank_typed_items(items, query, search_options, scratch)

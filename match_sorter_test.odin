@@ -2,11 +2,21 @@ package match_sorter
 
 import "core:testing"
 import "core:math"
+import "core:mem"
+import mem_virtual "core:mem/virtual"
 
 expect_strings :: proc(t: ^testing.T, actual, expected: []string) {
 	testing.expect_value(t, len(actual), len(expected))
 	if len(actual) != len(expected) { return }
 	for value, index in actual { testing.expect_value(t, value, expected[index]) }
+}
+
+expect_temp_allocator_identity :: proc(
+	t: ^testing.T,
+	expected: mem.Allocator,
+) {
+	testing.expect(t, context.temp_allocator.procedure == expected.procedure)
+	testing.expect(t, context.temp_allocator.data == expected.data)
 }
 
 field :: proc(name: string, value: Value) -> Field { return {name, value} }
@@ -492,6 +502,127 @@ typed_indices_into_reuses_caller_buffer_test :: proc(t: ^testing.T) {
 	match_indices_into_typed(&search, items, "he", Typed_Options(string){}, &result)
 	testing.expect(t, raw_data(result[:]) == buffer)
 	testing.expect_value(t, cap(result), result_capacity)
+	testing.expect_value(t, search.scratch.total_used, uint(0))
+}
+
+@(test)
+context_apis_restore_caller_temp_allocator_test :: proc(t: ^testing.T) {
+	search: Search_Context
+	testing.expect(t, search_context_init(&search) == nil)
+	defer search_context_destroy(&search)
+
+	caller_arena: mem_virtual.Arena
+	caller_error := mem_virtual.arena_init_growing(&caller_arena)
+	testing.expect_value(t, caller_error, nil)
+	if caller_error != nil {
+		return
+	}
+	defer mem_virtual.arena_destroy(&caller_arena)
+
+	previous := context.temp_allocator
+	defer context.temp_allocator = previous
+	caller_allocator := mem_virtual.arena_allocator(&caller_arena)
+	context.temp_allocator = caller_allocator
+
+	dynamic_items := []Value{string_value("hello"), string_value("hey")}
+	dynamic_indices := match_indices_dynamic(
+		&search,
+		dynamic_items,
+		"h",
+	)
+	delete(dynamic_indices)
+	expect_temp_allocator_identity(t, caller_allocator)
+	context.temp_allocator = caller_allocator
+
+	dynamic_ranked := match_with_rank_info_dynamic(
+		&search,
+		dynamic_items,
+		"h",
+	)
+	ranked_result_destroy(&dynamic_ranked)
+	expect_temp_allocator_identity(t, caller_allocator)
+	context.temp_allocator = caller_allocator
+
+	typed_items := []string{"hello", "hey"}
+	typed_indices := match_indices_typed(
+		&search,
+		typed_items,
+		"h",
+		Typed_Options(string){},
+	)
+	delete(typed_indices)
+	expect_temp_allocator_identity(t, caller_allocator)
+	context.temp_allocator = caller_allocator
+
+	typed_into := make([dynamic]int)
+	match_indices_into_typed(
+		&search,
+		typed_items,
+		"h",
+		Typed_Options(string){},
+		&typed_into,
+	)
+	delete(typed_into)
+	expect_temp_allocator_identity(t, caller_allocator)
+	context.temp_allocator = caller_allocator
+
+	typed_ranked := match_with_rank_info_typed(
+		&search,
+		typed_items,
+		"h",
+		Typed_Options(string){},
+	)
+	ranked_result_destroy(&typed_ranked)
+	expect_temp_allocator_identity(t, caller_allocator)
+}
+
+@(test)
+caller_temporaries_stay_out_of_search_scratch_test :: proc(t: ^testing.T) {
+	search: Search_Context
+	testing.expect(t, search_context_init(&search) == nil)
+	defer search_context_destroy(&search)
+
+	caller_arena: mem_virtual.Arena
+	caller_error := mem_virtual.arena_init_growing(&caller_arena)
+	testing.expect_value(t, caller_error, nil)
+	if caller_error != nil {
+		return
+	}
+	defer mem_virtual.arena_destroy(&caller_arena)
+
+	previous := context.temp_allocator
+	defer context.temp_allocator = previous
+	caller_allocator := mem_virtual.arena_allocator(&caller_arena)
+	context.temp_allocator = caller_allocator
+
+	items := []string{"hello", "hey"}
+	first := match_indices_typed(
+		&search,
+		items,
+		"h",
+		Typed_Options(string){},
+	)
+	delete(first)
+
+	caller_data := make([]byte, 4, context.temp_allocator)
+	caller_data[0] = 0x12
+	caller_data[1] = 0x34
+	caller_data[2] = 0x56
+	caller_data[3] = 0x78
+
+	second := match_indices_typed(
+		&search,
+		items,
+		"he",
+		Typed_Options(string){},
+	)
+	delete(second)
+
+	expect_temp_allocator_identity(t, caller_allocator)
+	testing.expect_value(t, caller_data[0], byte(0x12))
+	testing.expect_value(t, caller_data[1], byte(0x34))
+	testing.expect_value(t, caller_data[2], byte(0x56))
+	testing.expect_value(t, caller_data[3], byte(0x78))
 	testing.expect_value(t, search.scratch.total_used, uint(0))
 }
 
